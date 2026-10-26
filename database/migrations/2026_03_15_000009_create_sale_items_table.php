@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('sale_items', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('sale_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('batch_id')->nullable()->constrained('product_batches')->nullOnDelete();
+            $table->integer('quantity');
+            $table->decimal('unit_cost', 12, 2); // Batch cost at time of sale
+            $table->decimal('unit_price', 12, 2); // Selling price charged
+            $table->decimal('subtotal_cost', 12, 2); // quantity * unit_cost
+            $table->decimal('subtotal_amount', 12, 2); // quantity * unit_price
+            $table->decimal('profit', 12, 2); // subtotal_amount - subtotal_cost
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('sale_items');
+    }
+};
