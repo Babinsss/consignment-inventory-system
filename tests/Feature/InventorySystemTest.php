@@ -19,7 +19,8 @@ class InventorySystemTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(DatabaseSeeder::class);
+        $this->seed(\Database\Seeders\UserSeeder::class);
+        $this->seed(\Database\Seeders\MedicalInventorySeeder::class);
     }
 
     public function test_dashboard_loads_successfully(): void
@@ -73,7 +74,8 @@ class InventorySystemTest extends TestCase
 
     public function test_financial_ledger_and_csv_export_load(): void
     {
-        $response = $this->get('/financial');
+        $financeOfficer = \App\Models\User::where('role', \App\Models\User::ROLE_FINANCE)->first();
+        $response = $this->actingAs($financeOfficer)->get('/financial');
         $response->assertStatus(200);
         $response->assertSee('Financial Ledger & Consignment Settlements', false);
 
