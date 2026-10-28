@@ -156,6 +156,29 @@ class DashboardController extends Controller
             $profitChartData[] = (float) $pSum;
         }
 
+        // 8. Category Distribution Data
+        $categoryBreakdown = DB::table('categories')
+            ->leftJoin('products', 'categories.id', '=', 'products.category_id')
+            ->leftJoin('product_batches', function ($join) {
+                $join->on('products.id', '=', 'product_batches.product_id')
+                    ->where('product_batches.status', '=', 'active')
+                    ->where('product_batches.quantity_remaining', '>', 0);
+            })
+            ->select('categories.name', DB::raw('COALESCE(SUM(product_batches.quantity_remaining * product_batches.unit_purchase_cost), 0) as total_val'))
+            ->groupBy('categories.id', 'categories.name')
+            ->having('total_val', '>', 0)
+            ->orderByDesc('total_val')
+            ->take(8)
+            ->get();
+
+        $categoryLabels = $categoryBreakdown->pluck('name')->toArray();
+        $categoryValues = $categoryBreakdown->pluck('total_val')->map(fn($v) => (float) $v)->toArray();
+
+        if (empty($categoryLabels)) {
+            $categoryLabels = ['Pharmacy Stock', 'Medical Supplies', 'Consignment Stock'];
+            $categoryValues = [(float)$totalPharmacyValue, (float)$totalMedicalSupplyValue, (float)$totalConsignmentValue];
+        }
+
         return view('dashboard', compact(
             'totalInventoryValue',
             'totalPharmacyValue',
@@ -175,6 +198,7 @@ class DashboardController extends Controller
             'totalMedicalSupplies',
             'totalConsignmentProducts',
             'totalSuppliers',
+            'totalSuppliers',
             'expiredBatchesCount',
             'criticalExpiryCount',
             'warningExpiryCount',
@@ -188,7 +212,9 @@ class DashboardController extends Controller
             'profitChartData',
             'hecsConsignorCollectibles',
             'hecsHospitalProfit',
-            'hecsGrossSales'
+            'hecsGrossSales',
+            'categoryLabels',
+            'categoryValues'
         ));
     }
 }

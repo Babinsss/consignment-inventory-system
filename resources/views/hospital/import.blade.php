@@ -9,7 +9,8 @@
     fileName: '',
     fileSize: '',
     sheetsDetected: [],
-    loading: false
+    loading: false,
+    isDragging: false
 }">
     <!-- Hospital Header Block -->
     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
@@ -120,9 +121,9 @@
                                         <th class="px-3 py-2 text-left font-semibold">Item Code</th>
                                         <th class="px-3 py-2 text-left font-semibold">Description</th>
                                         <th class="px-3 py-2 text-left font-semibold">Consignor</th>
-                                        <th class="px-3 py-2 text-right font-semibold">Cost (₱)</th>
-                                        <th class="px-3 py-2 text-right font-semibold">Markup (₱)</th>
-                                        <th class="px-3 py-2 text-right font-semibold">Selling Price (₱)</th>
+                                        <th class="px-3 py-2 text-right font-semibold">Cost (&#8369;)</th>
+                                        <th class="px-3 py-2 text-right font-semibold">Markup (&#8369;)</th>
+                                        <th class="px-3 py-2 text-right font-semibold">Selling Price (&#8369;)</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-100">
@@ -234,8 +235,21 @@
                     <!-- File Drop / Upload Box -->
                     <div class="mb-5">
                         <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">2. Choose Excel Spreadsheet or CSV File</label>
-                        <div class="border-2 border-dashed border-slate-300 hover:border-purple-500 rounded-2xl p-6 text-center transition bg-slate-50/50">
+                        <div class="border-2 border-dashed rounded-2xl p-6 text-center transition"
+                             :class="isDragging ? 'border-purple-600 bg-purple-50/70 ring-2 ring-purple-500/30' : 'border-slate-300 hover:border-purple-500 bg-slate-50/50'"
+                             @dragover.prevent="isDragging = true"
+                             @dragleave.prevent="isDragging = false"
+                             @drop.prevent="
+                                isDragging = false;
+                                const f = $event.dataTransfer.files[0];
+                                if(f) {
+                                    $refs.fileInput.files = $event.dataTransfer.files;
+                                    fileName = f.name;
+                                    fileSize = (f.size / (1024 * 1024)).toFixed(2) + ' MB';
+                                }
+                             ">
                             <input type="file" name="excel_file" id="excel_file" required
+                                   x-ref="fileInput"
                                    accept=".xlsx,.xls,.csv"
                                    @change="
                                        const f = $event.target.files[0];
