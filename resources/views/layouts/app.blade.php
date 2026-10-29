@@ -185,13 +185,13 @@
                                 <span>+ New Delivery</span>
                             </a>
 
-                            <!-- Desktop Quick Dispense -->
-                            <a href="{{ route('sales.create') }}" 
-                               class="hidden sm:inline-flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition shadow-emerald-600/20">
+                            <!-- Desktop Quick Requisition -->
+                            <a href="{{ route('requests.portal') }}" 
+                               class="hidden sm:inline-flex items-center px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition shadow-amber-600/20">
                                 <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                                 </svg>
-                                <span>+ Dispense Stock</span>
+                                <span>+ New Requisition</span>
                             </a>
                         @endif
 
@@ -434,11 +434,11 @@
                             </span>
                             <span>Record Delivery</span>
                         </a>
-                        <a href="{{ route('sales.create') }}" class="flex items-center space-x-2.5 p-2 rounded-xl hover:bg-slate-800 text-xs font-semibold">
-                            <span class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                        <a href="{{ route('requests.portal') }}" class="flex items-center space-x-2.5 p-2 rounded-xl hover:bg-slate-800 text-xs font-semibold">
+                            <span class="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                             </span>
-                            <span>Dispense Stock</span>
+                            <span>New Requisition</span>
                         </a>
                         <a href="{{ route('hospital.stock-card') }}" class="flex items-center space-x-2.5 p-2 rounded-xl hover:bg-slate-800 text-xs font-semibold">
                             <span class="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
@@ -449,13 +449,13 @@
                     </div>
                 </div>
 
-                <!-- Dispensing / Sales -->
-                <a href="{{ route('sales.index') }}" 
-                   class="flex flex-col items-center justify-center text-[10px] font-semibold transition {{ request()->routeIs('sales.*') ? 'text-emerald-600 font-bold' : 'text-slate-500 hover:text-slate-900' }}">
-                    <svg class="w-5 h-5 {{ request()->routeIs('sales.*') ? 'text-emerald-600' : 'text-slate-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                <!-- Requisitions & Who Requested -->
+                <a href="{{ route('requests.index') }}" 
+                   class="flex flex-col items-center justify-center text-[10px] font-semibold transition {{ request()->routeIs('requests.*') ? 'text-amber-600 font-bold' : 'text-slate-500 hover:text-slate-900' }}">
+                    <svg class="w-5 h-5 {{ request()->routeIs('requests.*') ? 'text-amber-600' : 'text-slate-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    <span class="mt-0.5">Dispense</span>
+                    <span class="mt-0.5">Requests</span>
                 </a>
 
                 <!-- Products -->

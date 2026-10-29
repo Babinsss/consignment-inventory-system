@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Delivery;
+use App\Models\DepartmentRequest;
 use App\Models\Product;
 use App\Models\ProductBatch;
-use App\Models\Sale;
 use App\Models\Supplier;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -15,75 +15,71 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        // 1. Inventory Valuations
-        $totalInventoryValue = ProductBatch::where('status', 'active')
-            ->where('quantity_remaining', '>', 0)
-            ->sum(DB::raw('quantity_remaining * unit_purchase_cost'));
+        // 1. Requisitions & Requester Tracking Metrics (matching RMPH-supply-management)
+        $pendingCount = DepartmentRequest::where('status', 'Pending')
+            ->distinct('batch_id')
+            ->count('batch_id');
 
-        $totalPharmacyValue = ProductBatch::where('status', 'active')
-            ->where('quantity_remaining', '>', 0)
-            ->whereHas('product', fn($q) => $q->where('item_type', 'pharmacy'))
-            ->sum(DB::raw('quantity_remaining * unit_purchase_cost'));
+        $totalRequisitionsCount = DepartmentRequest::distinct('batch_id')->count('batch_id');
 
-        $totalMedicalSupplyValue = ProductBatch::where('status', 'active')
-            ->where('quantity_remaining', '>', 0)
-            ->whereHas('product', fn($q) => $q->where('item_type', 'medical_supply'))
-            ->sum(DB::raw('quantity_remaining * unit_purchase_cost'));
+        // 7-Day Requisition Activity Trend
+        $chartDates = [];
+        $chartData = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $date = Carbon::now()->subDays($i)->format('Y-m-d');
+            $chartDates[] = Carbon::now()->subDays($i)->format('M d');
+            $chartData[] = DepartmentRequest::whereDate('created_at', $date)
+                ->distinct('batch_id')
+                ->count('batch_id');
+        }
 
-        $totalConsignmentValue = ProductBatch::where('status', 'active')
-            ->where('quantity_remaining', '>', 0)
-            ->whereHas('product', fn($q) => $q->where('inventory_type', 'consignment'))
-            ->sum(DB::raw('quantity_remaining * unit_purchase_cost'));
+        // 2. Request Processing Timeline Batches (Who requested, what department, purpose, status)
+        $allRequests = DepartmentRequest::with(['product.category', 'issuer'])
+            ->orderByRaw("CASE WHEN status = 'Pending' THEN 1 WHEN status = 'Approved' THEN 2 ELSE 3 END ASC")
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-        // 2. Deliveries & Purchasing Metrics
-        $totalDeliveriesValue = Delivery::where('status', '!=', 'cancelled')->sum('total_amount');
-        $deliveriesThisMonth = Delivery::where('status', '!=', 'cancelled')
-            ->whereMonth('delivery_date', Carbon::now()->month)
-            ->whereYear('delivery_date', Carbon::now()->year)
-            ->sum('total_amount');
+        $groupedBatches = [];
+        foreach ($allRequests as $req) {
+            if (!isset($groupedBatches[$req->batch_id])) {
+                $groupedBatches[$req->batch_id] = [
+                    'batch_id' => $req->batch_id,
+                    'created_at' => $req->created_at,
+                    'department_name' => $req->department_name,
+                    'requested_by' => $req->requested_by,
+                    'purpose' => $req->purpose,
+                    'is_emergency' => $req->is_emergency,
+                    'status' => $req->status,
+                    'issued_by' => $req->issuer?->name,
+                    'issued_at' => $req->issued_at,
+                    'items' => collect(),
+                ];
+            }
+            $groupedBatches[$req->batch_id]['items']->push($req);
+        }
 
-        $pendingPayables = Delivery::where('status', '!=', 'cancelled')
-            ->whereIn('payment_status', ['unpaid', 'partially_paid'])
-            ->sum(DB::raw('total_amount - amount_paid'));
+        foreach ($groupedBatches as $key => $batch) {
+            $hasPending = $batch['items']->contains('status', 'Pending');
+            $groupedBatches[$key]['status'] = $hasPending ? 'Pending' : ($batch['items']->every(fn($i) => $i->status === 'Approved') ? 'Approved' : 'Processed');
+        }
 
-        // 3. Sales & Dispensing Financials
-        $totalSalesRevenue = Sale::sum('total_amount');
-        $totalCostOfGoodsSold = Sale::sum('subtotal_cost');
-        $totalGrossProfit = Sale::sum('total_profit');
-        $overallMargin = $totalSalesRevenue > 0 ? round(($totalGrossProfit / $totalSalesRevenue) * 100, 1) : 0;
+        $requestsTimeline = array_values($groupedBatches);
 
-        $salesThisMonth = Sale::whereMonth('sale_date', Carbon::now()->month)
-            ->whereYear('sale_date', Carbon::now()->year)
-            ->sum('total_amount');
+        // 3. Stock Monitoring & Inventory Alerts
+        $productsList = Product::with(['batches', 'category'])->where('is_active', true)->get();
 
-        $profitThisMonth = Sale::whereMonth('sale_date', Carbon::now()->month)
-            ->whereYear('sale_date', Carbon::now()->year)
-            ->sum('total_profit');
+        // Critical / Low Stock Alert Items (total stock <= min_stock_alert)
+        $criticalSupplies = $productsList->filter(function ($p) {
+            return $p->total_stock <= $p->min_stock_alert;
+        })->sortBy('total_stock')->values();
 
-        // Hospital Extensive Consignment System (HECS) Metrics
-        $hecsConsignorCollectibles = DB::table('sale_items')
-            ->join('products', 'products.id', '=', 'sale_items.product_id')
-            ->where('products.inventory_type', 'consignment')
-            ->sum('sale_items.subtotal_cost');
+        $lowStockCount = $criticalSupplies->count();
+        $totalProducts = $productsList->count();
+        $totalPharmacyProducts = $productsList->where('item_type', 'pharmacy')->count();
+        $totalMedicalSupplies = $productsList->where('item_type', 'medical_supply')->count();
+        $totalConsignmentProducts = $productsList->where('inventory_type', 'consignment')->count();
 
-        $hecsHospitalProfit = DB::table('sale_items')
-            ->join('products', 'products.id', '=', 'sale_items.product_id')
-            ->where('products.inventory_type', 'consignment')
-            ->sum('sale_items.profit');
-
-        $hecsGrossSales = DB::table('sale_items')
-            ->join('products', 'products.id', '=', 'sale_items.product_id')
-            ->where('products.inventory_type', 'consignment')
-            ->sum('sale_items.subtotal_amount');
-
-        // 4. Counts
-        $totalProducts = Product::where('is_active', true)->count();
-        $totalPharmacyProducts = Product::where('is_active', true)->where('item_type', 'pharmacy')->count();
-        $totalMedicalSupplies = Product::where('is_active', true)->where('item_type', 'medical_supply')->count();
-        $totalConsignmentProducts = Product::where('is_active', true)->where('inventory_type', 'consignment')->count();
-        $totalSuppliers = Supplier::where('status', 'active')->count();
-
-        // 5. Expiry & Low Stock Alerts
+        // 4. Expiry Tracking
         $today = Carbon::today();
         $thirtyDays = Carbon::today()->addDays(30);
         $ninetyDays = Carbon::today()->addDays(90);
@@ -103,118 +99,39 @@ class DashboardController extends Controller
             ->whereBetween('expiry_date', [$thirtyDays, $ninetyDays])
             ->count();
 
-        // Low stock items: products where total stock <= min_stock_alert
-        $productsList = Product::with('batches')->where('is_active', true)->get();
-        $lowStockProducts = $productsList->filter(function ($p) {
-            return $p->total_stock <= $p->min_stock_alert;
-        });
+        // 5. Deliveries Intake Tracking (Inward Deliveries)
+        $totalDeliveriesCount = Delivery::where('status', '!=', 'cancelled')->count();
+        $deliveriesThisMonthCount = Delivery::where('status', '!=', 'cancelled')
+            ->whereMonth('delivery_date', Carbon::now()->month)
+            ->whereYear('delivery_date', Carbon::now()->year)
+            ->count();
 
-        // 6. Recent Activity
-        $recentDeliveries = Delivery::with(['supplier', 'items'])
-            ->latest()
-            ->take(5)
-            ->get();
-
-        $recentDispensations = Sale::with('items.product')
-            ->latest('sale_date')
-            ->take(5)
-            ->get();
-
-        $expiringBatches = ProductBatch::with('product')
-            ->where('status', 'active')
-            ->where('quantity_remaining', '>', 0)
-            ->where('expiry_date', '<=', $ninetyDays)
-            ->orderBy('expiry_date', 'asc')
+        $recentDeliveries = Delivery::with(['supplier', 'items.product'])
+            ->latest('delivery_date')
             ->take(6)
             ->get();
 
-        // 7. Monthly Financial Chart Data (Last 6 Months)
-        $chartMonths = [];
-        $deliveriesChartData = [];
-        $salesChartData = [];
-        $profitChartData = [];
-
-        for ($i = 5; $i >= 0; $i--) {
-            $monthDate = Carbon::now()->subMonths($i);
-            $monthLabel = $monthDate->format('M Y');
-            $chartMonths[] = $monthLabel;
-
-            $dSum = Delivery::where('status', '!=', 'cancelled')
-                ->whereMonth('delivery_date', $monthDate->month)
-                ->whereYear('delivery_date', $monthDate->year)
-                ->sum('total_amount');
-            $deliveriesChartData[] = (float) $dSum;
-
-            $sSum = Sale::whereMonth('sale_date', $monthDate->month)
-                ->whereYear('sale_date', $monthDate->year)
-                ->sum('total_amount');
-            $salesChartData[] = (float) $sSum;
-
-            $pSum = Sale::whereMonth('sale_date', $monthDate->month)
-                ->whereYear('sale_date', $monthDate->year)
-                ->sum('total_profit');
-            $profitChartData[] = (float) $pSum;
-        }
-
-        // 8. Category Distribution Data
-        $categoryBreakdown = DB::table('categories')
-            ->leftJoin('products', 'categories.id', '=', 'products.category_id')
-            ->leftJoin('product_batches', function ($join) {
-                $join->on('products.id', '=', 'product_batches.product_id')
-                    ->where('product_batches.status', '=', 'active')
-                    ->where('product_batches.quantity_remaining', '>', 0);
-            })
-            ->select('categories.name', DB::raw('COALESCE(SUM(product_batches.quantity_remaining * product_batches.unit_purchase_cost), 0) as total_val'))
-            ->groupBy('categories.id', 'categories.name')
-            ->having('total_val', '>', 0)
-            ->orderByDesc('total_val')
-            ->take(8)
-            ->get();
-
-        $categoryLabels = $categoryBreakdown->pluck('name')->toArray();
-        $categoryValues = $categoryBreakdown->pluck('total_val')->map(fn($v) => (float) $v)->toArray();
-
-        if (empty($categoryLabels)) {
-            $categoryLabels = ['Pharmacy Stock', 'Medical Supplies', 'Consignment Stock'];
-            $categoryValues = [(float)$totalPharmacyValue, (float)$totalMedicalSupplyValue, (float)$totalConsignmentValue];
-        }
+        $totalSuppliers = Supplier::where('status', 'active')->count();
 
         return view('dashboard', compact(
-            'totalInventoryValue',
-            'totalPharmacyValue',
-            'totalMedicalSupplyValue',
-            'totalConsignmentValue',
-            'totalDeliveriesValue',
-            'deliveriesThisMonth',
-            'pendingPayables',
-            'totalSalesRevenue',
-            'totalCostOfGoodsSold',
-            'totalGrossProfit',
-            'overallMargin',
-            'salesThisMonth',
-            'profitThisMonth',
+            'pendingCount',
+            'totalRequisitionsCount',
+            'chartDates',
+            'chartData',
+            'requestsTimeline',
+            'criticalSupplies',
+            'lowStockCount',
             'totalProducts',
             'totalPharmacyProducts',
             'totalMedicalSupplies',
             'totalConsignmentProducts',
-            'totalSuppliers',
-            'totalSuppliers',
             'expiredBatchesCount',
             'criticalExpiryCount',
             'warningExpiryCount',
-            'lowStockProducts',
+            'totalDeliveriesCount',
+            'deliveriesThisMonthCount',
             'recentDeliveries',
-            'recentDispensations',
-            'expiringBatches',
-            'chartMonths',
-            'deliveriesChartData',
-            'salesChartData',
-            'profitChartData',
-            'hecsConsignorCollectibles',
-            'hecsHospitalProfit',
-            'hecsGrossSales',
-            'categoryLabels',
-            'categoryValues'
+            'totalSuppliers'
         ));
     }
 }

@@ -3,11 +3,10 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryController;
-use App\Http\Controllers\FinancialController;
+use App\Http\Controllers\DepartmentRequestController;
 use App\Http\Controllers\HospitalConsignmentController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReportController;
-use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -18,26 +17,31 @@ Route::post('login', [AuthController::class, 'login']);
 Route::post('logout', [AuthController::class, 'logout'])->name('logout');
 Route::post('switch-role', [AuthController::class, 'switchRole'])->name('switch-role');
 
-// Dashboard (Accessible by all staff)
+// Dashboard (Operational Supply Operations & Request Processing Timeline)
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/dashboard', [DashboardController::class, 'index']);
 
-// Deliveries (Tracking new deliveries of Medical Supplies & Pharmacy Stocks)
+// Deliveries (Tracking new deliveries of Medical Supplies & Consignment Stocks)
 Route::resource('deliveries', DeliveryController::class)->only(['index', 'create', 'store', 'show']);
-Route::post('deliveries/{delivery}/payment', [DeliveryController::class, 'recordPayment'])->name('deliveries.payment');
 
-// Inventory: Products (Medical Supplies & Pharmacy Stocks)
+// Requisitions & Issuances (Matching RMPH-supply-management - Monitor Who Requested)
+Route::get('portal', [DepartmentRequestController::class, 'portal'])->name('requests.portal');
+Route::post('requests/submit', [DepartmentRequestController::class, 'submitRequest'])->name('requests.submit');
+Route::get('requests', [DepartmentRequestController::class, 'index'])->name('requests.index');
+Route::post('requests/{batch_id}/approve', [DepartmentRequestController::class, 'approveBatch'])->name('requests.approve');
+Route::post('requests/{batch_id}/deny', [DepartmentRequestController::class, 'denyBatch'])->name('requests.deny');
+Route::get('requests/{batch_id}/print', [DepartmentRequestController::class, 'printRis'])->name('requests.print');
+Route::get('print-bulk/{batch_id}', [DepartmentRequestController::class, 'printRis']);
+
+// Inventory: Products (Medical Supplies, Consignment & Pharmacy Stocks)
 Route::resource('products', ProductController::class);
 Route::post('products/{product}/adjust', [ProductController::class, 'adjustStock'])->name('products.adjust');
-
-// Sales & Dispensing
-Route::resource('sales', SaleController::class)->only(['index', 'create', 'store', 'show']);
 
 // Suppliers & Consignors
 Route::resource('suppliers', SupplierController::class);
 
-// Hospital Extensive Consignment System (HECS) - Accessible to Medical Supplies Staff, Finance & Admins
-Route::prefix('hospital')->name('hospital.')->middleware('role:admin,medical_supply_staff,finance_officer')->group(function () {
+// Hospital Extensive Consignment System (HECS) - Accessible to Medical Supplies Staff & Admins
+Route::prefix('hospital')->name('hospital.')->middleware('role:admin,medical_supply_staff,pharmacy_staff')->group(function () {
     Route::get('stcg', [HospitalConsignmentController::class, 'stcg'])->name('stcg');
     Route::get('sccg', [HospitalConsignmentController::class, 'sccg'])->name('sccg');
     Route::get('stock-card', [HospitalConsignmentController::class, 'stockCard'])->name('stock-card');
@@ -45,12 +49,6 @@ Route::prefix('hospital')->name('hospital.')->middleware('role:admin,medical_sup
     Route::get('import', [HospitalConsignmentController::class, 'showImport'])->name('import');
     Route::post('import', [HospitalConsignmentController::class, 'processImport'])->name('import.process');
     Route::get('templates/{type}', [HospitalConsignmentController::class, 'downloadTemplate'])->name('template.download');
-});
-
-// Financial Management & Consignment Settlement - Finance Officers & Admins only
-Route::middleware('role:admin,finance_officer')->group(function () {
-    Route::get('financial', [FinancialController::class, 'index'])->name('financial.index');
-    Route::get('financial/export-csv', [FinancialController::class, 'exportCsv'])->name('financial.export');
 });
 
 // User Management & Roles - Hospital Administrator only

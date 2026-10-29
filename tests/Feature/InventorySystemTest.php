@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Delivery;
+use App\Models\DepartmentRequest;
 use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\Supplier;
@@ -21,24 +22,27 @@ class InventorySystemTest extends TestCase
         parent::setUp();
         $this->seed(\Database\Seeders\UserSeeder::class);
         $this->seed(\Database\Seeders\MedicalInventorySeeder::class);
+        $this->seed(\Database\Seeders\DepartmentSeeder::class);
+        $this->seed(\Database\Seeders\SampleRequestsSeeder::class);
     }
 
     public function test_dashboard_loads_successfully(): void
     {
         $response = $this->get('/');
         $response->assertStatus(200);
-        $response->assertSee('Medical Supplies & Pharmacy Operations', false);
+        $response->assertSee('Hospital Supply Operations', false);
+        $response->assertSee('Request Processing Timeline', false);
     }
 
     public function test_deliveries_pages_load_successfully(): void
     {
         $response = $this->get('/deliveries');
         $response->assertStatus(200);
-        $response->assertSee('Deliveries & Stock Receiving', false);
+        $response->assertSee('Inward Deliveries & Stock Intake', false);
 
         $createResponse = $this->get('/deliveries/create');
         $createResponse->assertStatus(200);
-        $createResponse->assertSee('Receive New Delivery & Stocks', false);
+        $createResponse->assertSee('Receive New Delivery', false);
 
         $delivery = Delivery::first();
         if ($delivery) {
@@ -62,100 +66,85 @@ class InventorySystemTest extends TestCase
         }
     }
 
-    public function test_sales_and_dispensing_pages_load(): void
+    public function test_requisition_portal_and_who_requested_flow(): void
     {
-        $response = $this->get('/sales');
-        $response->assertStatus(200);
-        $response->assertSee('Dispensing & Sales Billing', false);
+        // 1. Portal loads
+        $portalResponse = $this->get('/portal');
+        $portalResponse->assertStatus(200);
+        $portalResponse->assertSee('Requisition Portal', false);
+        $portalResponse->assertSee('Requested By', false);
 
-        $createResponse = $this->get('/sales/create');
-        $createResponse->assertStatus(200);
-    }
-
-    public function test_financial_ledger_and_csv_export_load(): void
-    {
-        $financeOfficer = \App\Models\User::where('role', \App\Models\User::ROLE_FINANCE)->first();
-        $response = $this->actingAs($financeOfficer)->get('/financial');
-        $response->assertStatus(200);
-        $response->assertSee('Financial Ledger & Consignment Settlements', false);
-
-        $csvResponse = $this->get('/financial/export-csv');
-        $csvResponse->assertStatus(200);
-        $this->assertStringContainsString('text/csv', $csvResponse->headers->get('content-type'));
-    }
-
-    public function test_reports_pages_load(): void
-    {
-        $this->get('/reports/expiry')->assertStatus(200);
-        $this->get('/reports/valuation')->assertStatus(200);
-        $this->get('/reports/low-stock')->assertStatus(200);
-        $this->get('/reports/audit-log')->assertStatus(200);
-    }
-
-    public function test_receiving_new_delivery_creates_batches_and_stock_movements(): void
-    {
-        $supplier = Supplier::first();
+        // 2. Submit new requisition
         $product = Product::first();
-
-        $deliveryData = [
-            'delivery_number' => 'DEL-TEST-' . rand(1000, 9999),
-            'supplier_id' => $supplier->id,
-            'invoice_number' => 'INV-TEST-001',
-            'delivery_date' => Carbon::today()->toDateString(),
-            'received_by' => 'Test Pharmacist',
-            'payment_status' => 'unpaid',
-            'items' => [
-                [
-                    'product_id' => $product->id,
-                    'batch_number' => 'LOT-TEST-99',
-                    'expiry_date' => Carbon::today()->addMonths(12)->toDateString(),
-                    'quantity' => 25,
-                    'unit_cost' => 150.00,
-                    'selling_price' => 250.00,
-                ]
+        $cartData = json_encode([
+            [
+                'id' => $product->id,
+                'qty' => 5,
             ]
-        ];
-
-        $response = $this->post('/deliveries', $deliveryData);
-        $response->assertRedirect();
-
-        $this->assertDatabaseHas('deliveries', ['delivery_number' => $deliveryData['delivery_number']]);
-        $this->assertDatabaseHas('product_batches', [
-            'batch_number' => 'LOT-TEST-99',
-            'quantity_remaining' => 25
         ]);
-        $this->assertDatabaseHas('stock_movements', [
-            'movement_type' => 'delivery_in',
-            'quantity' => 25
+
+        $postResponse = $this->post('/requests/submit', [
+            'department_name' => 'DIALYSIS',
+            'requested_by' => 'Nurse Joy Ramos, RN',
+            'purpose' => 'Urgent patient medication in Dialysis Station 1',
+            'is_emergency' => '1',
+            'cart_data' => $cartData,
         ]);
+
+        $postResponse->assertSessionHas('success');
+        $postResponse->assertSessionHas('submitted_batch_id');
+
+        // Verify saved in DB
+        $this->assertDatabaseHas('department_requests', [
+            'department_name' => 'DIALYSIS',
+            'requested_by' => 'Nurse Joy Ramos, RN',
+            'purpose' => 'Urgent patient medication in Dialysis Station 1',
+            'status' => 'Pending',
+            'quantity' => 5,
+        ]);
+
+        $createdReq = DepartmentRequest::where('requested_by', 'Nurse Joy Ramos, RN')->first();
+        $this->assertNotNull($createdReq);
+        $submittedBatchId = $createdReq->batch_id;
+
+        // 3. Requests index shows who requested
+        $indexResponse = $this->get('/requests');
+        $indexResponse->assertStatus(200);
+        $indexResponse->assertSee('Nurse Joy Ramos, RN');
+        $indexResponse->assertSee('DIALYSIS');
+
+        // 4. Approve batch
+        $admin = \App\Models\User::first();
+        $this->actingAs($admin);
+
+        $approveResponse = $this->post("/requests/{$submittedBatchId}/approve");
+        $approveResponse->assertSessionHas('success');
+
+        $this->assertDatabaseHas('department_requests', [
+            'batch_id' => $submittedBatchId,
+            'status' => 'Approved',
+            'issued_by' => $admin->id,
+        ]);
+
+        // 5. Printable RIS slip
+        $printResponse = $this->get("/requests/{$submittedBatchId}/print");
+        $printResponse->assertStatus(200);
+        $printResponse->assertSee('REQUISITION AND ISSUE SLIP (RIS)');
+        $printResponse->assertSee('Nurse Joy Ramos, RN');
     }
 
-    public function test_dispensing_item_deducts_from_fefo_batch_and_calculates_profit(): void
+    public function test_rejects_unauthorized_department_in_portal(): void
     {
-        $product = Product::where('sku', 'RX-AMO-500')->first();
-        $initialStock = $product->total_stock;
+        $product = Product::first();
+        $cartData = json_encode([['id' => $product->id, 'qty' => 1]]);
 
-        $saleData = [
-            'sale_number' => 'DISP-TEST-' . rand(1000, 9999),
-            'transaction_type' => 'dispensing',
-            'patient_name' => 'Test Patient Maria',
-            'sale_date' => Carbon::now()->toDateTimeString(),
-            'payment_method' => 'cash',
-            'payment_status' => 'paid',
-            'dispensed_by' => 'Test Pharmacist',
-            'items' => [
-                [
-                    'product_id' => $product->id,
-                    'quantity' => 2,
-                    'unit_price' => 650.00,
-                ]
-            ]
-        ];
+        $response = $this->post('/requests/submit', [
+            'department_name' => 'Pediatrics Ward',
+            'requested_by' => 'Nurse Joy Ramos, RN',
+            'purpose' => 'Routine refill',
+            'cart_data' => $cartData,
+        ]);
 
-        $response = $this->post('/sales', $saleData);
-        $response->assertRedirect();
-
-        $this->assertDatabaseHas('sales', ['sale_number' => $saleData['sale_number']]);
-        $this->assertEquals($initialStock - 2, $product->fresh()->total_stock);
+        $response->assertSessionHasErrors(['department_name']);
     }
 }

@@ -235,7 +235,27 @@ class HospitalConsignmentController extends Controller
                     'sale_items.subtotal_cost as iss_total',
                 ])->get();
 
-            $merged = $delItems->concat($saleItems)->sortBy('date')->values();
+            // Department Requisitions Issued (Monitor Who Requested)
+            $deptReqs = DB::table('department_requests')
+                ->where('product_id', $selectedProduct->id)
+                ->where('status', 'Approved')
+                ->select([
+                    DB::raw('COALESCE(issued_at, created_at) as date'),
+                    'batch_id as reference',
+                    'department_name',
+                    'requested_by',
+                    DB::raw('0 as rec_qty'),
+                    DB::raw('0 as rec_cost'),
+                    DB::raw('0 as rec_total'),
+                    DB::raw('(CASE WHEN quantity_issued > 0 THEN quantity_issued ELSE quantity END) as iss_qty'),
+                    DB::raw('0 as iss_cost'),
+                    DB::raw('0 as iss_total'),
+                ])->get()->map(function ($row) {
+                    $row->party = $row->department_name . ' (Req: ' . $row->requested_by . ')';
+                    return $row;
+                });
+
+            $merged = $delItems->concat($saleItems)->concat($deptReqs)->sortBy('date')->values();
 
             $runningBalanceQty = 0;
             $unitCost = $selectedProduct->default_purchase_price;

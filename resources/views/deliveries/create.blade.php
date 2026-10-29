@@ -59,26 +59,6 @@
                     <label class="block text-xs font-bold text-slate-700 mb-1">Received By (Staff / Pharmacist) *</label>
                     <input type="text" name="received_by" value="{{ old('received_by', auth()->user()?->name ?? 'Consignment Custodian') }}" required placeholder="Staff Name" class="w-full text-xs rounded-xl border border-slate-300 px-3 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
                 </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Payment Terms / Status *</label>
-                    <select name="payment_status" x-model="paymentStatus" class="w-full text-xs rounded-xl border border-slate-300 px-3 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
-                        <option value="unpaid">Unpaid (Accounts Payable)</option>
-                        <option value="partially_paid">Partially Paid</option>
-                        <option value="paid">Paid in Full (COD / Immediate)</option>
-                        <option value="consignment_term">Consignment Agreement (Pay on Usage)</option>
-                    </select>
-                </div>
-
-                <div x-show="paymentStatus === 'partially_paid'" x-cloak>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Initial Amount Paid (&#8369;)</label>
-                    <input type="number" step="0.01" min="0" name="amount_paid" x-model="initialAmountPaid" placeholder="0.00" class="w-full text-xs rounded-xl border border-slate-300 px-3 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Invoice Due Date</label>
-                    <input type="date" name="due_date" value="{{ old('due_date', date('Y-m-d', strtotime('+30 days'))) }}" class="w-full text-xs rounded-xl border border-slate-300 px-3 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
-                </div>
             </div>
 
             <div>
@@ -261,8 +241,6 @@
     function deliveryForm() {
         return {
             selectedSupplierId: '{{ old('supplier_id', '') }}',
-            paymentStatus: '{{ old('payment_status', 'unpaid') }}',
-            initialAmountPaid: 0,
             items: [
                 {
                     product_id: '',
@@ -282,11 +260,6 @@
                 this.items[0].expiry_date = nextYear.toISOString().split('T')[0];
             },
             onSupplierChange() {
-                const select = document.querySelector('select[name="supplier_id"]');
-                const opt = select.options[select.selectedIndex];
-                if (opt && opt.dataset.terms === 'Consignment') {
-                    this.paymentStatus = 'consignment_term';
-                }
             },
             addItem() {
                 const nextYear = new Date();

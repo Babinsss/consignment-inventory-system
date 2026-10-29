@@ -81,6 +81,11 @@ class Product extends Model
         return $this->hasMany(SaleItem::class);
     }
 
+    public function departmentRequests(): HasMany
+    {
+        return $this->hasMany(DepartmentRequest::class);
+    }
+
     public function stockMovements(): HasMany
     {
         return $this->hasMany(StockMovement::class)->latest();
